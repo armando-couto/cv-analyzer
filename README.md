@@ -1,108 +1,124 @@
-# 📂 Currículo Analyzer com IA (Go + OpenAI)
+# Extrator de Informações de Currículos em PDF com Go + Ollama
 
-Este projeto analisa automaticamente milhares de currículos em PDF usando inteligência artificial (OpenAI GPT-4), extraindo informações relevantes dos candidatos e classificando os melhores com base em critérios definidos.
-
----
-
-## 📚 Índice
-
-- [Funcionalidades](#-funcionalidades)
-- [Tecnologias utilizadas](#-tecnologias-utilizadas)
-- [Configuração](#configuração)
-- [Executando](#executando)
-- [Exemplo de saída no relatório](#exemplo-de-saída-no-relatório)
-- [Possíveis melhorias](#-possíveis-melhorias)
-- [Licença](#-licença)
+Este projeto em Go lê vários arquivos PDF de currículos de uma pasta local, extrai o texto de cada um e envia para um modelo local do Ollama para extrair informações específicas conforme um prompt fixo. A resposta da IA é exibida no terminal para cada currículo processado.
 
 ---
 
-## 🚀 Funcionalidades
+## Funcionalidades
 
-- 📥 Leitura automatizada de currículos em PDF
-- 🤖 Extração via OpenAI das seguintes informações:
-  - Cidade e estado
-  - Idade aproximada
-  - Se está cursando faculdade (e qual)
-  - Linguagens de programação que domina
-  - Projetos relevantes
-- 🏆 Geração de nota/classificação
-- 📝 Criação de relatório `.txt` com os 20 melhores currículos
+- Lê todos os PDFs da pasta `pdfs` local.
+- Extrai texto dos PDFs usando a biblioteca `github.com/ledongthuc/pdf`.
+- Envia o texto extraído junto com um prompt fixo para o modelo local Ollama (`llama3`).
+- Recebe e exibe as informações extraídas de cada currículo no terminal.
+- Fácil de adaptar para outros prompts ou modelos.
 
 ---
 
-## 🛠️ Tecnologias utilizadas
+## Requisitos
 
-- [Go (Golang)](https://golang.org)
-- [OpenAI GPT-4 API](https://platform.openai.com)
-- [`github.com/ledongthuc/pdf`](https://pkg.go.dev/github.com/ledongthuc/pdf)
-- [`github.com/sashabaranov/go-openai`](https://pkg.go.dev/github.com/sashabaranov/go-openai)
-- [`github.com/joho/godotenv`](https://pkg.go.dev/github.com/joho/godotenv)
+- Go 1.18+ instalado
+- Ollama instalado e rodando localmente (https://ollama.com/download)
+- Modelo `llama3` baixado no Ollama (exemplo usado no código)
 
 ---
 
-## ⚙️ Configuração
+## Instalação e Setup
 
-1. Clone este repositório:
+1. **Instale o Ollama**
 
-```bash
-git clone https://github.com/seu-usuario/curriculo-analyzer.git
-cd curriculo-analyzer
-go mod tidy
-```
+   Baixe e instale o Ollama para seu sistema operacional:  
+   [https://ollama.com/download](https://ollama.com/download)
 
-2. Crie um arquivo `.env` com sua chave da OpenAI:
+2. **Baixe o modelo `llama3`**
 
-```env
-OPENAI_API_KEY=sk-sua-chave-aqui
-FILES_PATH="./curriculos"
-```
+   No terminal, execute:
+   ```bash
+   ollama pull llama3
+   ```
 
-## ▶️ Executando
+3. **Clone este repositório ou crie um diretório**
 
-Execute o projeto com:
+   Coloque o código `main.go` dentro do diretório.
 
+4. **Crie a pasta `pdfs`**
+
+   Coloque os arquivos PDF dos currículos dentro dessa pasta.
+
+5. **Instale a dependência de PDF**
+
+   No terminal, dentro do diretório do projeto:
+   ```bash
+   go get github.com/ledongthuc/pdf
+   ```
+
+---
+
+## Uso
+
+Execute o programa:
 ```bash
 go run main.go
 ```
 
-O sistema irá:
+Para cada PDF na pasta `pdfs`, o programa:
 
-- Ler todos os currículos PDF da pasta `./curriculos`
-- Enviar o conteúdo para o GPT-4 com um prompt personalizado
-- Gerar um relatório chamado `relatorio_top20.txt` contendo os candidatos mais bem avaliados
+- Extrairá o texto.
+- Enviará o texto junto com o prompt fixo para o Ollama.
+- Imprimirá a resposta formatada da IA no terminal.
 
 ---
 
-## 📝 Exemplo de saída no relatório
+## Prompt Utilizado
 
-```
-01. joao_silva.pdf — Nota: 9.2
-Resumo:
-Cidade/Estado: São Paulo, SP
-Idade: 22
-Faculdade: Sim — Análise e Desenvolvimento de Sistemas na FIAP
-Linguagens: Python, JavaScript, SQL
+```txt
+Extraia as seguintes informações do currículo enviado. Seja direto e utilize apenas os dados presentes no texto. Não faça suposições.
+
+1. Cidade e estado (caso estejam informados)
+2. Idade aproximada ou data de nascimento (caso esteja no currículo)
+3. Está cursando faculdade? (Responda Sim ou Não + curso e instituição, se mencionados)
+4. Linguagens de programação ou ferramentas que domina (com base no que está escrito)
+5. Projetos relevantes (resuma brevemente até 2, se houver)
+6. Perfil mais adequado: vaga de desenvolvimento ou teste de software
+
+Formato de saída esperado:
+
+Cidade/Estado: <cidade>, <estado>
+Idade: <idade ou "não informado">
+Faculdade: <Sim/Não> – <curso>, <instituição> (se houver)
+Tipo da vaga: <Desenvolvimento/Teste>
+Linguagens: <linguagens mencionadas>
 Projetos relevantes:
-- Sistema de controle de estoque com Django
-- API RESTful com Go + PostgreSQL
+- <projeto 1>
+- <projeto 2>
+...
 
-02. maria_oliveira.pdf — Nota: 8.8
-Resumo:
-Cidade/Estado: Belo Horizonte, MG
-Idade: 20
-Faculdade: Sim — Ciência da Computação na UFMG
-Linguagens: Java, Kotlin
-Projetos relevantes:
-- Aplicativo de monitoramento de estudos
+Currículo:
 ```
 
 ---
 
-## ✅ Possíveis melhorias
+## Considerações
 
-- Exportar os dados em formato CSV ou JSON
-- Rodar em paralelo para melhor performance
-- Filtrar candidatos por localização, linguagem ou idade
-- Criar uma interface web para upload e visualização dos currículos
+- O Ollama deve estar rodando localmente (`ollama serve`) para aceitar requisições HTTP.
+- O modelo `llama3` pode ser substituído por outro modelo disponível no Ollama, basta ajustar no código.
+- O processamento é feito um PDF por vez. Pode ser adaptado para processamento paralelo.
+- Caso tenha muitos PDFs, fique atento ao limite de tokens do modelo.
 
 ---
+
+## Sugestões para melhorias
+
+- Salvar resultados em arquivo CSV ou JSON.
+- Criar interface web simples para upload de PDFs.
+- Suporte a outras línguas e prompts customizados.
+- Melhor tratamento de erros e logs detalhados.
+
+---
+
+## Licença
+
+MIT License — Use livremente, adapte para seu projeto!
+
+---
+
+Se quiser, posso te ajudar a criar essas melhorias também! Quer seguir?

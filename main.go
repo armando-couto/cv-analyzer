@@ -7,10 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
-
-	openai "github.com/sashabaranov/go-openai"
 )
 
 func main() {
@@ -20,80 +17,54 @@ func main() {
 		log.Fatal("Erro ao carregar .env")
 	}
 
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if apiKey == "" {
-		log.Fatal("Defina a variável de ambiente OPENAI_API_KEY com sua chave da OpenAI.")
-	}
-
-	client := openai.NewClient(apiKey)
-
-	caminho := os.Getenv("FILES_PATH")
-	if caminho == "" {
+	pasta := os.Getenv("FILES_PATH")
+	if pasta == "" {
 		log.Fatal("Defina a variável de ambiente FILES_PATH.")
 	}
 
-	var resultados []services.Resultado
+	resultFile := "resultados.txt"
 
-	err = filepath.Walk(caminho, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".pdf") {
-			return nil
-		}
-		fmt.Println("Lendo:", info.Name())
-		texto, err := services.LerPDF(path)
+	err = os.WriteFile(resultFile, []byte(""), 0644)
+	if err != nil {
+		panic(err)
+	}
+
+	err = filepath.Walk(pasta, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
-			log.Println("Erro lendo PDF:", err)
-			return nil
+			return err
 		}
+		if !info.IsDir() && strings.HasSuffix(strings.ToLower(info.Name()), ".pdf") {
+			fmt.Println("\n📄 Processando:", path)
 
-		nota, resumo, err := services.AvaliarCurriculo(client, texto)
-		if err != nil {
-			log.Println("Erro na avaliação:", err)
-			return nil
+			text, err := services.ExtractTextFromPDF(path)
+			if err != nil {
+				fmt.Println("Erro lendo PDF:", err)
+				return nil
+			}
+
+			fullResponse := services.Ollama(text, err)
+			resposta := fullResponse.String()
+
+			// Salva no arquivo
+			output := fmt.Sprintf("Arquivo: %s\n\n%s\n\n------------------------------------------------------------------------------------------\n\n", info.Name(), resposta)
+			f, err := os.OpenFile(resultFile, os.O_APPEND|os.O_WRONLY, 0644)
+			if err != nil {
+				fmt.Println("Erro abrindo arquivo de resultados:", err)
+				return nil
+			}
+			defer f.Close()
+			if _, err := f.WriteString(output); err != nil {
+				fmt.Println("Erro escrevendo no arquivo de resultados:", err)
+			}
+
+			fmt.Println("\n=== Resposta da IA ===\n", resposta)
 		}
-
-		resultados = append(resultados, services.Resultado{
-			Arquivo: info.Name(),
-			Nota:    nota,
-			Resumo:  resumo,
-		})
 		return nil
 	})
+
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
 
-	// Ordenar por nota (desc)
-	sort.Slice(resultados, func(i, j int) bool {
-		return resultados[i].Nota > resultados[j].Nota
-	})
-
-	// Criar arquivo de relatório
-	relatorio, err := os.Create("relatorio_top20.txt")
-	if err != nil {
-		log.Fatal("Erro criando o relatório:", err)
-	}
-	defer relatorio.Close()
-
-	// Mostrar os top 20 e salvar no arquivo
-	fmt.Println("\nTop 20 Currículos:\n")
-	limite := 20
-	if len(resultados) < 20 {
-		limite = len(resultados)
-	}
-	for i := 0; i < limite; i++ {
-		saida := fmt.Sprintf("%02d. %s — Nota: %.1f\nResumo: %s\n\n",
-			i+1,
-			resultados[i].Arquivo,
-			resultados[i].Nota,
-			resultados[i].Resumo,
-		)
-
-		fmt.Print(saida) // Imprime no terminal
-		_, err := relatorio.WriteString(saida)
-		if err != nil {
-			log.Println("Erro ao escrever no relatório:", err)
-		}
-	}
-
-	fmt.Println("Relatório salvo em: relatorio_top20.txt")
+	fmt.Printf("✅ Processamento finalizado. Resultados salvos em %s\n", resultFile)
 }

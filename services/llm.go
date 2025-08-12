@@ -1,65 +1,93 @@
 package services
 
 import (
-	"context"
+	"bufio"
+	"bytes"
+	"encoding/json"
 	"fmt"
-	"github.com/sashabaranov/go-openai"
+	"net/http"
 	"strings"
 )
 
-func AvaliarCurriculo(client *openai.Client, texto string) (float64, string, error) {
-	prompt := fmt.Sprintf(`
-Extraia as seguintes informações do currículo abaixo. Seja objetivo e baseado apenas no que estiver escrito.
+const BASEP_ROMPT = `Extraia as informações abaixo do currículo exatamente conforme estão no texto.  
+Se não encontrar a informação, escreva "não informado".  
 
-1. Cidade e estado (se houver)
-2. Idade aproximada (ou data de nascimento, se presente)
-3. Está fazendo faculdade? (Sim/Não + curso e instituição se houver)
-4. Quais linguagens de programação sabe (baseado no que menciona)
-5. Projetos relevantes (descreva brevemente, se possível)
+1. Cidade e estado (exemplo: São Gonçalo, Rio de Janeiro)  
+2. Idade aproximada ou data de nascimento  
+3. Está cursando faculdade? (Sim ou Não + curso e instituição, se mencionados)  
+4. Linguagens de programação ou ferramentas que domina  
+5. Projetos relevantes (resuma até 2 projetos)  
+6. Perfil mais adequado: vaga de desenvolvimento ou teste de software  
 
-Formato de saída esperado:
+Formato da resposta:  
+Cidade/Estado: <cidade>, <estado>  
+Idade: <idade ou "não informado">  
+Faculdade: <Sim/Não> – <curso>, <instituição> (se houver)  
+Tipo da vaga: <Desenvolvimento/Teste>  
+Linguagens: <linguagens mencionadas>  
+Projetos relevantes:  
+- <projeto 1>  
+- <projeto 2>  
 
-Cidade/Estado: <cidade>, <estado>
-Idade: <idade>
-Faculdade: <Sim/Não + detalhes>
-Linguagens: <lista de linguagens>
-Projetos relevantes:
-- <projeto 1>
-- <projeto 2>
-...
+Exemplo:  
+Cidade/Estado: São Gonçalo, Rio de Janeiro  
+Idade: não informado  
+Faculdade: Sim – Análise e Desenvolvimento de Sistemas, EBAC  
+Tipo da vaga: Desenvolvimento  
+Linguagens: Javascript, HTML, CSS, C#, React.js, Node.js  
+Projetos relevantes:  
+- Site de Game Shop: site interativo para venda de jogos digitais com formulários e animações em JavaScript  
+- Blog Gastronômico: plataforma para recomendações de restaurantes, com cards interativos  
 
-Currículo:
-%s
-`, texto)
+Currículo:  
+`
 
-	resp, err := client.CreateChatCompletion(
-		context.Background(),
-		openai.ChatCompletionRequest{
-			Model: openai.GPT4,
-			Messages: []openai.ChatCompletionMessage{
-				{
-					Role:    "user",
-					Content: prompt,
-				},
-			},
-		},
-	)
+type OllamaRequest struct {
+	Model  string `json:"model"`
+	Prompt string `json:"prompt"`
+}
+
+type OllamaChunk struct {
+	Response string `json:"response"`
+	Done     bool   `json:"done"`
+}
+
+func Ollama(text string, err error) strings.Builder {
+	finalPrompt := BASEP_ROMPT + text
+
+	reqBody, err := json.Marshal(OllamaRequest{
+		Model:  "llama3",
+		Prompt: finalPrompt,
+	})
 	if err != nil {
-		return 0, "", err
+		fmt.Println("Erro ao montar JSON:", err)
+		return strings.Builder{}
 	}
 
-	content := resp.Choices[0].Message.Content
-
-	// Pegar nota (esperado: "Nota: 8.5")
-	var nota float64
-	var resumo string
-	fmt.Sscanf(content, "Nota: %f", &nota)
-
-	// Tentar extrair o resumo também
-	parts := strings.SplitN(content, "Resumo:", 2)
-	if len(parts) == 2 {
-		resumo = strings.TrimSpace(parts[1])
+	resp, err := http.Post("http://localhost:11434/api/generate", "application/json", bytes.NewReader(reqBody))
+	if err != nil {
+		fmt.Println("Erro enviando para Ollama:", err)
+		return strings.Builder{}
 	}
+	defer resp.Body.Close()
 
-	return nota, resumo, nil
+	var fullResponse strings.Builder
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		var chunk OllamaChunk
+		err := json.Unmarshal([]byte(line), &chunk)
+		if err != nil {
+			fmt.Println("Erro decodificando chunk JSON:", err)
+			continue
+		}
+		fullResponse.WriteString(chunk.Response)
+		if chunk.Done {
+			break
+		}
+	}
+	return fullResponse
 }
